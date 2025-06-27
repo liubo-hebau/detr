@@ -2,37 +2,37 @@
 """
 Train and eval functions used in main.py
 """
-import math
-import os
-import sys
-from typing import Iterable
+import math  # 数学相关函数
+import os  # 操作系统接口
+import sys  # 访问 Python 解释器相关功能
+from typing import Iterable  # 类型提示
 
-import torch
+import torch  # PyTorch 主库
 
-import util.misc as utils
-from datasets.coco_eval import CocoEvaluator
-from datasets.panoptic_eval import PanopticEvaluator
+import util.misc as utils  # 辅助工具
+from datasets.coco_eval import CocoEvaluator  # COCO 评估器
+from datasets.panoptic_eval import PanopticEvaluator  # 全景分割评估器
 
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, max_norm: float = 0):
-    model.train()
-    criterion.train()
-    metric_logger = utils.MetricLogger(delimiter="  ")
+    model.train()  # 设置模型为训练模式
+    criterion.train()  # 损失函数也可能含可学习参数
+    metric_logger = utils.MetricLogger(delimiter="  ")  # 日志记录器
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
     header = 'Epoch: [{}]'.format(epoch)
-    print_freq = 10
+    print_freq = 10  # 日志打印频率
 
     for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
-        samples = samples.to(device)
+        samples = samples.to(device)  # 将数据移动到设备上
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
-        outputs = model(samples)
-        loss_dict = criterion(outputs, targets)
-        weight_dict = criterion.weight_dict
-        losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
+        outputs = model(samples)  # 前向传播
+        loss_dict = criterion(outputs, targets)  # 计算损失
+        weight_dict = criterion.weight_dict  # 各项损失权重
+        losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)  # 加权求和
 
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = utils.reduce_dict(loss_dict)
@@ -57,7 +57,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
         metric_logger.update(loss=loss_value, **loss_dict_reduced_scaled, **loss_dict_reduced_unscaled)
         metric_logger.update(class_error=loss_dict_reduced['class_error'])
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+        metric_logger.update(lr=optimizer.param_groups[0]["lr"])  # 记录学习率
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -73,7 +73,7 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
     metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
     header = 'Test:'
 
-    iou_types = tuple(k for k in ('segm', 'bbox') if k in postprocessors.keys())
+    iou_types = tuple(k for k in ('segm', 'bbox') if k in postprocessors.keys())  # 根据输出决定评估类型
     coco_evaluator = CocoEvaluator(base_ds, iou_types)
     # coco_evaluator.coco_eval[iou_types[0]].params.iouThrs = [0, 0.1, 0.5, 0.75]
 
@@ -109,7 +109,7 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         if 'segm' in postprocessors.keys():
             target_sizes = torch.stack([t["size"] for t in targets], dim=0)
             results = postprocessors['segm'](results, outputs, orig_target_sizes, target_sizes)
-        res = {target['image_id'].item(): output for target, output in zip(targets, results)}
+        res = {target['image_id'].item(): output for target, output in zip(targets, results)}  # 将结果映射到 image_id
         if coco_evaluator is not None:
             coco_evaluator.update(res)
 
@@ -121,7 +121,7 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
                 res_pano[i]["image_id"] = image_id
                 res_pano[i]["file_name"] = file_name
 
-            panoptic_evaluator.update(res_pano)
+            panoptic_evaluator.update(res_pano)  # 更新全景评估器
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -138,7 +138,7 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
     panoptic_res = None
     if panoptic_evaluator is not None:
         panoptic_res = panoptic_evaluator.summarize()
-    stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}  # 收集平均指标
     if coco_evaluator is not None:
         if 'bbox' in postprocessors.keys():
             stats['coco_eval_bbox'] = coco_evaluator.coco_eval['bbox'].stats.tolist()
